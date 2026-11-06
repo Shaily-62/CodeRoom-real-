@@ -1,0 +1,17 @@
+# Environment variables
+.env
+.env.*
+
+# Allow example environment file
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Operating system
+.DS_Store
+Thumbs.db 
