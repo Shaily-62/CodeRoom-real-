@@ -11,11 +11,12 @@ import DashboardPage from "../pages/DashboardPage";
 import WorkspacePage from "../pages/WorkspacePage";
 import SettingsPage from "../pages/SettingsPage";
 
+import InviteAcceptPage from "../pages/InviteAcceptPage";
+
 function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
-
         {/* Public Routes */}
         <Route path="/" element={<div>Landing Page</div>} />
 
@@ -26,30 +27,20 @@ function AppRouter() {
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
-
           {/* Routes using the dashboard layout */}
           <Route element={<DashboardLayout />}>
-            <Route
-              path="/dashboard"
-              element={<DashboardPage />}
-            />
+            <Route path="/dashboard" element={<DashboardPage />} />
 
-            <Route
-              path="/settings"
-              element={<SettingsPage />}
-            />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
           {/* Workspace will have its own layout later */}
-          <Route
-            path="/workspace/:projectId"
-            element={<WorkspacePage />}
-          />
-
+          <Route path="/workspace/:projectId" element={<WorkspacePage />} />
         </Route>
 
-        <Route path="*" element={<div>404 - Page Not Found</div>} />
+        <Route path="/invite/accept" element={<InviteAcceptPage />} />
 
+        <Route path="*" element={<div>404 - Page Not Found</div>} />
       </Routes>
     </BrowserRouter>
   );

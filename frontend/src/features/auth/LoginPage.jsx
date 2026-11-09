@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 
 import { loginUser } from "./authService";
 import { useAuthStore } from "../../store/authStore";
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setAuth = useAuthStore((state) => state.setAuth);
+
+  const redirectTo = new URLSearchParams(location.search).get("redirect");
 
   const [formData, setFormData] = useState({
     email: "",
@@ -38,7 +41,14 @@ function LoginPage() {
         session: result.session,
       });
 
-      navigate("/dashboard");
+      // Return the user to the invitation page after login.
+      // Only allow internal application paths.
+      const safeRedirect =
+        redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")
+          ? redirectTo
+          : "/dashboard";
+
+      navigate(safeRedirect, { replace: true });
     } catch (err) {
       setError(
         err.response?.data?.message || "Unable to log in. Please try again.",

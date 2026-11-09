@@ -1,12 +1,20 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 
 import { signupUser } from "./authService";
 import { useAuthStore } from "../../store/authStore";
 
 function SignupPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setAuth = useAuthStore((state) => state.setAuth);
+
+  const redirectTo = new URLSearchParams(location.search).get("redirect");
+
+  const safeRedirect =
+    redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")
+      ? redirectTo
+      : "/dashboard";
 
   const [formData, setFormData] = useState({
     full_name: "",
@@ -43,16 +51,14 @@ function SignupPage() {
           session: result.session,
         });
 
-        navigate("/dashboard");
+        navigate(safeRedirect, { replace: true });
       } else {
         setSuccess(
-          "Account created! Please confirm your email before logging in."
+          "Account created! Please confirm your email before logging in.",
         );
       }
     } catch (err) {
-      setError(
-        err.response?.data?.message || "Unable to create your account."
-      );
+      setError(err.response?.data?.message || "Unable to create your account.");
     } finally {
       setLoading(false);
     }
@@ -60,34 +66,23 @@ function SignupPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-4 py-10">
-
       <div className="w-full max-w-md">
-
-        {/* Branding */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold tracking-tight">
             Code<span className="text-primary">Room</span>
           </h1>
 
-          <p className="text-muted mt-2">
-            Build together. Ship together.
-          </p>
+          <p className="text-muted mt-2">Build together. Ship together.</p>
         </div>
 
-        {/* Signup Card */}
         <div className="bg-surface border border-border rounded-2xl p-8 shadow-xl">
-
-          <h2 className="text-2xl font-semibold">
-            Create your account
-          </h2>
+          <h2 className="text-2xl font-semibold">Create your account</h2>
 
           <p className="text-muted text-sm mt-2 mb-7">
             Start building something great with your team.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-
-            {/* Full Name */}
             <div>
               <label className="block text-sm font-medium mb-2">
                 Full Name
@@ -107,7 +102,6 @@ function SignupPage() {
               />
             </div>
 
-            {/* Email */}
             <div>
               <label className="block text-sm font-medium mb-2">
                 Email Address
@@ -125,11 +119,8 @@ function SignupPage() {
               />
             </div>
 
-            {/* Password */}
             <div>
-              <label className="block text-sm font-medium mb-2">
-                Password
-              </label>
+              <label className="block text-sm font-medium mb-2">Password</label>
 
               <input
                 type="password"
@@ -145,21 +136,10 @@ function SignupPage() {
               />
             </div>
 
-            {/* Error */}
-            {error && (
-              <p className="text-danger text-sm">
-                {error}
-              </p>
-            )}
+            {error && <p className="text-danger text-sm">{error}</p>}
 
-            {/* Success */}
-            {success && (
-              <p className="text-success text-sm">
-                {success}
-              </p>
-            )}
+            {success && <p className="text-success text-sm">{success}</p>}
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -167,25 +147,22 @@ function SignupPage() {
             >
               {loading ? "Creating Account..." : "Create Account"}
             </button>
-
           </form>
 
           <p className="text-center text-sm text-muted mt-7">
             Already have an account?{" "}
             <Link
-              to="/login"
+              to={`/login${redirectTo ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
               className="text-primary font-semibold hover:underline"
             >
               Login
             </Link>
           </p>
-
         </div>
 
         <p className="text-center text-xs text-muted mt-6">
           By creating an account, you agree to use CodeRoom responsibly.
         </p>
-
       </div>
     </div>
   );
