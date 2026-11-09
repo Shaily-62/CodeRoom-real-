@@ -9,6 +9,7 @@ import { supabase } from "./config/supabase.js";
 //importing routes
 import authRoutes from "./routes/auth.routes.js";
 import projectRoutes from "./routes/project.routes.js";
+import invitationRoutes from "./routes/invitation.routes.js";
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.get("/api/health/supabase", async (req, res, next) => {
 //all apis
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectRoutes);
+app.use("/api/invitations", invitationRoutes);
 
 // Handle unknown routes
 app.use((req, res) => {
