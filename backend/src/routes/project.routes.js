@@ -21,6 +21,14 @@ import {
   revokeInvitation,
 } from "../controllers/invitation.controller.js";
 
+import {
+  getFiles,
+  createFile,
+  getFile,
+  updateFile,
+  deleteFile,
+} from "../controllers/file.controller.js";
+
 const router = express.Router();
 
 // All project routes require authentication
@@ -73,5 +81,12 @@ router.delete(
   authenticateUser,
   removeTeamMember,
 );
+
+// Project file management
+router.get("/:projectId/files", authenticateUser, getFiles);
+router.post("/:projectId/files", authenticateUser, createFile);
+router.get("/:projectId/files/:fileId", authenticateUser, getFile);
+router.patch("/:projectId/files/:fileId", authenticateUser, updateFile);
+router.delete("/:projectId/files/:fileId", authenticateUser, deleteFile);
 
 export default router;
