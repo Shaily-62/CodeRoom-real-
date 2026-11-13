@@ -17,10 +17,20 @@ import MoveItemModal from "../features/workspace/MoveItemModal";
 import useWorkspaceActions from "../features/workspace/useWorkspaceActions";
 
 import { useWorkspaceStore } from "../store/workspaceStore";
+import { useAuthStore } from "../store/authStore";
+import { createCollaborationSession } from "../features/workspace/collaborationService";
 
 function WorkspacePage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
+
+  const accessToken = useAuthStore((state) => state.accessToken);
+
+  const [collaborationSession, setCollaborationSession] = useState(null);
+  const [collaborationStatus, setCollaborationStatus] =
+    useState("disconnected");
+  const [collaborationSynced, setCollaborationSynced] = useState(false);
+  const [collaborationError, setCollaborationError] = useState("");
 
   const [project, setProject] = useState(null);
   const [projectLoading, setProjectLoading] = useState(true);
@@ -47,7 +57,6 @@ function WorkspacePage() {
   const setDraft = useWorkspaceStore((state) => state.setDraft);
   const getFileContent = useWorkspaceStore((state) => state.getFileContent);
   const isDirty = useWorkspaceStore((state) => state.isDirty);
-
   const drafts = useWorkspaceStore((state) => state.drafts);
 
   const {
@@ -59,7 +68,24 @@ function WorkspacePage() {
     handleMove,
   } = useWorkspaceActions(projectId);
 
-  // Exclude the selected folder and all its descendants
+  // Check whether any file has unsaved changes.
+  const hasUnsavedChanges = () =>
+    Object.keys(drafts).some((fileId) => isDirty(fileId));
+
+  // Protect against losing edits when navigating away.
+  const handleBackToDashboard = () => {
+    if (hasUnsavedChanges()) {
+      const confirmed = window.confirm(
+        "You have unsaved changes. Are you sure you want to leave this workspace?",
+      );
+
+      if (!confirmed) return;
+    }
+
+    navigate("/dashboard");
+  };
+
+  // Exclude the selected folder and its descendants
   // from possible move destinations.
   const availableMoveFolders = useMemo(() => {
     if (!activeMoveItem || activeMoveItem.type !== "folder") {
@@ -85,13 +111,13 @@ function WorkspacePage() {
     return folders.filter((folder) => !unavailableIds.has(folder.id));
   }, [folders, files, activeMoveItem]);
 
-  // Clear previous project's workspace state
+  // Clear previous project's workspace state.
   useEffect(() => {
     clearWorkspace();
     setEditorContent("");
   }, [projectId, clearWorkspace]);
 
-  // Load project details
+  // Load project details.
   useEffect(() => {
     let active = true;
 
@@ -126,7 +152,69 @@ function WorkspacePage() {
     };
   }, [projectId]);
 
-  // Update editor when selected file changes
+  // Manage the collaboration connection for the selected file.
+  useEffect(() => {
+    if (!selectedFile || !accessToken) {
+      setCollaborationSession(null);
+      setCollaborationStatus("disconnected");
+      setCollaborationSynced(false);
+      setCollaborationError("");
+      return;
+    }
+
+    let active = true;
+    let session = null;
+
+    setCollaborationSession(null);
+    setCollaborationStatus("connecting");
+    setCollaborationSynced(false);
+    setCollaborationError("");
+
+    try {
+      session = createCollaborationSession({
+        projectId,
+        fileId: selectedFile.id,
+        accessToken,
+
+        onStatus: (status) => {
+          if (active) {
+            setCollaborationStatus(status);
+          }
+        },
+
+        onSynced: (synced) => {
+          if (active && synced) {
+            setCollaborationSynced(true);
+          }
+        },
+
+        onAuthenticationFailed: () => {
+          if (active) {
+            setCollaborationError(
+              "Collaboration authentication failed. Please log in again.",
+            );
+          }
+        },
+      });
+
+      if (active) {
+        setCollaborationSession(session);
+      }
+    } catch (error) {
+      setCollaborationError(error.message || "Could not start collaboration.");
+      setCollaborationStatus("disconnected");
+    }
+
+    return () => {
+      active = false;
+
+      if (session) {
+        session.destroy();
+      }
+    };
+  }, [projectId, selectedFile?.id, accessToken]);
+
+  // Update editor when selected file changes.
   useEffect(() => {
     if (!selectedFile) {
       setEditorContent("");
@@ -136,28 +224,47 @@ function WorkspacePage() {
     setEditorContent(getFileContent(selectedFile));
   }, [selectedFile?.id, getFileContent]);
 
+  // Protect against browser refresh or tab closure.
   useEffect(() => {
-  const hasUnsavedChanges = Object.keys(drafts).some((fileId) =>
-    isDirty(fileId)
-  );
+    if (!hasUnsavedChanges()) return;
 
-  if (!hasUnsavedChanges) return;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
 
-  const handleBeforeUnload = (event) => {
-    event.preventDefault();
-    event.returnValue = "";
-  };
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
-  window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [drafts, isDirty]);
 
-  return () => {
-    window.removeEventListener("beforeunload", handleBeforeUnload);
-  };
-}, [drafts, isDirty]);
+  // Save the current file using Ctrl + S or Cmd + S.
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const isSaveShortcut =
+        (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s";
 
+      if (!isSaveShortcut) return;
 
+      event.preventDefault();
 
-  // Save current file
+      if (!selectedFile || !isDirty(selectedFile.id) || saving) {
+        return;
+      }
+
+      handleSave();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedFile, editorContent, saving, isDirty]);
+
+  // Save current file.
   const handleSave = async () => {
     if (!selectedFile) return;
 
@@ -170,7 +277,7 @@ function WorkspacePage() {
     }
   };
 
-  // Create actions
+  // Create actions.
   const openCreateFile = (folderId = null) => {
     setTargetFolderId(folderId);
     setShowFileModal(true);
@@ -181,7 +288,7 @@ function WorkspacePage() {
     setShowFolderModal(true);
   };
 
-  // Rename and delete actions
+  // Rename and delete actions.
   const openRename = (item) => {
     setActiveItem(item);
     setShowRenameModal(true);
@@ -192,7 +299,7 @@ function WorkspacePage() {
     setShowDeleteModal(true);
   };
 
-  // Move action
+  // Move action.
   const openMove = (item) => {
     setActiveMoveItem(item);
     setShowMoveModal(true);
@@ -203,6 +310,7 @@ function WorkspacePage() {
     setActiveMoveItem(null);
   };
 
+  // Editor changes.
   const handleEditorChange = (content) => {
     setEditorContent(content);
 
@@ -228,7 +336,7 @@ function WorkspacePage() {
         </p>
 
         <button
-          onClick={() => navigate("/dashboard")}
+          onClick={handleBackToDashboard}
           className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm"
         >
           Back to Dashboard
@@ -243,7 +351,7 @@ function WorkspacePage() {
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/dashboard")}
+            onClick={handleBackToDashboard}
             className="rounded-md p-2 hover:bg-black/5 dark:hover:bg-white/5"
             title="Back to Dashboard"
           >
@@ -256,6 +364,26 @@ function WorkspacePage() {
             <div>
               <h1 className="text-sm font-semibold">{project.name}</h1>
               <p className="text-xs opacity-60">CodeRoom Workspace</p>
+            </div>
+
+            <div className="ml-3 flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  collaborationStatus === "connected" && collaborationSynced
+                    ? "bg-green-500"
+                    : collaborationStatus === "connecting"
+                      ? "bg-yellow-500"
+                      : "bg-red-500"
+                }`}
+              />
+
+              <span className="text-xs opacity-70">
+                {collaborationSynced
+                  ? "Live"
+                  : collaborationStatus === "connecting"
+                    ? "Connecting"
+                    : "Disconnected"}
+              </span>
             </div>
           </div>
         </div>
@@ -295,11 +423,32 @@ function WorkspacePage() {
 
           {selectedFile ? (
             <div className="min-h-0 flex-1">
-              <CodeEditor
-                value={editorContent}
-                language={selectedFile.language || "plaintext"}
-                onChange={handleEditorChange}
-              />
+              {!collaborationSynced ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3">
+                  {collaborationError ? (
+                    <p className="text-sm text-red-500">{collaborationError}</p>
+                  ) : (
+                    <>
+                      <Loader2 size={22} className="animate-spin" />
+                      <p className="text-sm opacity-60">
+                        {collaborationStatus === "connected"
+                          ? "Synchronizing document..."
+                          : "Connecting to collaboration server..."}
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <CodeEditor
+                  key={selectedFile.id}
+                  fileId={selectedFile.id}
+                  value={editorContent}
+                  language={selectedFile.language || "plaintext"}
+                  onChange={handleEditorChange}
+                  ydoc={collaborationSession?.ydoc}
+                  provider={collaborationSession?.provider}
+                />
+              )}
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 opacity-50">
