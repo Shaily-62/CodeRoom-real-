@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Code2, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Code2, Loader2, Save, Cloud, CloudOff } from "lucide-react";
 
 import { getProjectById } from "../features/projects/projectService";
 
@@ -19,6 +19,9 @@ import useWorkspaceActions from "../features/workspace/useWorkspaceActions";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useAuthStore } from "../store/authStore";
 import { createCollaborationSession } from "../features/workspace/collaborationService";
+
+import TeamManagementModal from "../features/teams/models/TeamManagementModal";
+import TeamButton from "../features/teams/components/TeamButton";
 
 function WorkspacePage() {
   const { projectId } = useParams();
@@ -41,12 +44,20 @@ function WorkspacePage() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false);
 
   const [targetFolderId, setTargetFolderId] = useState(null);
   const [activeItem, setActiveItem] = useState(null);
   const [activeMoveItem, setActiveMoveItem] = useState(null);
 
   const [editorContent, setEditorContent] = useState("");
+
+  // Auto Save preference persists across reloads.
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(() => {
+    return localStorage.getItem("coderoom-autosave") !== "false";
+  });
+
+  const [autoSaveError, setAutoSaveError] = useState("");
 
   const files = useWorkspaceStore((state) => state.files);
   const selectedFile = useWorkspaceStore((state) => state.selectedFile);
@@ -67,6 +78,11 @@ function WorkspacePage() {
     handleDelete,
     handleMove,
   } = useWorkspaceActions(projectId);
+
+  // Persist Auto Save preference.
+  useEffect(() => {
+    localStorage.setItem("coderoom-autosave", String(autoSaveEnabled));
+  }, [autoSaveEnabled]);
 
   // Check whether any file has unsaved changes.
   const hasUnsavedChanges = () =>
@@ -222,6 +238,7 @@ function WorkspacePage() {
     }
 
     setEditorContent(getFileContent(selectedFile));
+    setAutoSaveError("");
   }, [selectedFile?.id, getFileContent]);
 
   // Protect against browser refresh or tab closure.
@@ -240,7 +257,63 @@ function WorkspacePage() {
     };
   }, [drafts, isDirty]);
 
-  // Save the current file using Ctrl + S or Cmd + S.
+  // Save current file.
+  const handleSave = async () => {
+    if (!selectedFile || !isDirty(selectedFile.id) || saving) return;
+
+    try {
+      setAutoSaveError("");
+
+      await updateFile(projectId, selectedFile.id, {
+        content: editorContent,
+      });
+    } catch {
+      // Zustand maintains the error state.
+    }
+  };
+
+  // Automatically save after the user stops typing for 1.5 seconds.
+  useEffect(() => {
+    if (
+      !autoSaveEnabled ||
+      !selectedFile ||
+      !collaborationSynced ||
+      !isDirty(selectedFile.id) ||
+      saving
+    ) {
+      return;
+    }
+
+    const fileId = selectedFile.id;
+    const contentToSave = editorContent;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setAutoSaveError("");
+
+        await updateFile(projectId, fileId, {
+          content: contentToSave,
+        });
+      } catch {
+        setAutoSaveError("Auto Save failed. Please try saving manually.");
+      }
+    }, 1500);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [
+    autoSaveEnabled,
+    selectedFile?.id,
+    editorContent,
+    collaborationSynced,
+    saving,
+    projectId,
+    updateFile,
+    isDirty,
+  ]);
+
+  // Save current file using Ctrl + S or Cmd + S.
   useEffect(() => {
     const handleKeyDown = (event) => {
       const isSaveShortcut =
@@ -249,11 +322,6 @@ function WorkspacePage() {
       if (!isSaveShortcut) return;
 
       event.preventDefault();
-
-      if (!selectedFile || !isDirty(selectedFile.id) || saving) {
-        return;
-      }
-
       handleSave();
     };
 
@@ -263,19 +331,6 @@ function WorkspacePage() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [selectedFile, editorContent, saving, isDirty]);
-
-  // Save current file.
-  const handleSave = async () => {
-    if (!selectedFile) return;
-
-    try {
-      await updateFile(projectId, selectedFile.id, {
-        content: editorContent,
-      });
-    } catch {
-      // Zustand maintains the error state.
-    }
-  };
 
   // Create actions.
   const openCreateFile = (folderId = null) => {
@@ -316,6 +371,7 @@ function WorkspacePage() {
 
     if (selectedFile) {
       setDraft(selectedFile.id, content);
+      setAutoSaveError("");
     }
   };
 
@@ -344,6 +400,8 @@ function WorkspacePage() {
       </div>
     );
   }
+
+  const selectedFileIsDirty = selectedFile ? isDirty(selectedFile.id) : false;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
@@ -388,20 +446,63 @@ function WorkspacePage() {
           </div>
         </div>
 
-        <button
-          onClick={handleSave}
-          disabled={!selectedFile || !isDirty(selectedFile.id) || saving}
-          className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {saving ? (
-            <Loader2 size={15} className="animate-spin" />
-          ) : (
-            <Save size={15} />
-          )}
+        {/* Workspace Actions */}
+        <div className="flex items-center gap-2">
+          <TeamButton onClick={() => setShowTeamModal(true)} />
 
-          {saving ? "Saving..." : "Save"}
-        </button>
+          {/* Auto Save Toggle */}
+          <button
+            onClick={() => setAutoSaveEnabled((previous) => !previous)}
+            aria-pressed={autoSaveEnabled}
+            title={autoSaveEnabled ? "Turn Auto Save off" : "Turn Auto Save on"}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+              autoSaveEnabled
+                ? "border-[var(--primary)] bg-[var(--primary)]/10"
+                : "border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/5"
+            }`}
+          >
+            {autoSaveEnabled ? <Cloud size={15} /> : <CloudOff size={15} />}
+            Auto Save {autoSaveEnabled ? "On" : "Off"}
+          </button>
+
+          {/* Save Status */}
+          <span className="hidden text-xs opacity-60 lg:block">
+            {saving
+              ? "Saving..."
+              : autoSaveError
+                ? "Save failed"
+                : selectedFileIsDirty
+                  ? autoSaveEnabled
+                    ? "Changes pending"
+                    : "Unsaved changes"
+                  : selectedFile
+                    ? "All changes saved"
+                    : ""}
+          </span>
+
+          {/* Manual Save */}
+          <button
+            onClick={handleSave}
+            disabled={!selectedFile || !selectedFileIsDirty || saving}
+            className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Save size={15} />
+            )}
+
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
       </header>
+
+      {/* Auto Save Error */}
+      {autoSaveError && (
+        <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-xs text-red-500">
+          {autoSaveError}
+        </div>
+      )}
 
       {/* Workspace Content */}
       <div className="flex min-h-0 flex-1">
@@ -514,6 +615,14 @@ function WorkspacePage() {
         folders={availableMoveFolders}
         onClose={closeMove}
         onMove={handleMove}
+      />
+
+      {/* Team Management */}
+      <TeamManagementModal
+        isOpen={showTeamModal}
+        onClose={() => setShowTeamModal(false)}
+        projectId={projectId}
+        projectOwnerId={project?.owner_id}
       />
     </div>
   );

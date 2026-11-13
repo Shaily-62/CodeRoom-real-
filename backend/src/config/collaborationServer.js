@@ -70,8 +70,18 @@ export const collaborationServer = new Server({
   },
 
   // 3. Persist changes after collaborative editing.
+
   async onStoreDocument({ documentName, document, lastContext }) {
     const { projectId, fileId } = parseDocumentName(documentName);
+
+    console.log("\n--- CodeRoom Save Diagnostics ---");
+    console.log("File ID:", fileId);
+    console.log("Project ID:", projectId);
+    console.log("User ID:", lastContext?.user?.id);
+    console.log("User email:", lastContext?.user?.email);
+    console.log("User role:", lastContext?.user?.role);
+    console.log("Access token exists:", Boolean(lastContext?.accessToken));
+    console.log("Access token length:", lastContext?.accessToken?.length || 0);
 
     if (!lastContext?.accessToken || !lastContext?.user?.id) {
       throw new Error("Missing collaboration user context.");

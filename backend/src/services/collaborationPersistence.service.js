@@ -53,8 +53,7 @@ export const loadCollaborationDocument = async ({ fileId, accessToken }) => {
   return ydoc;
 };
 
-// Save the Yjs state and keep project_files.content
-// synchronized with the latest collaborative text.
+// Save the Yjs state and synchronize project_files.content.
 export const storeCollaborationDocument = async ({
   fileId,
   projectId,
@@ -68,23 +67,66 @@ export const storeCollaborationDocument = async ({
 
   const db = createUserSupabaseClient(accessToken);
 
+  // Verify project editing permission.
+  const { data: canEdit, error: permissionError } = await db.rpc(
+    "is_project_editor",
+    {
+      p_project_id: projectId,
+    },
+  );
+
+  if (permissionError) {
+    throw new Error(
+      `Failed to verify project permissions: ${permissionError.message}`,
+    );
+  }
+
+  if (!canEdit) {
+    throw new Error("You do not have permission to edit this project.");
+  }
+
+  // Verify file editing permission.
+  const { data: canEditFile, error: filePermissionError } = await db.rpc(
+    "can_edit_collaboration_file",
+    {
+      p_file_id: fileId,
+    },
+  );
+
+  if (filePermissionError) {
+    throw new Error(
+      `Failed to verify file permissions: ${filePermissionError.message}`,
+    );
+  }
+
+  if (!canEditFile) {
+    throw new Error("You do not have permission to edit this file.");
+  }
+
+  const now = new Date().toISOString();
+
+  // Encode the complete Yjs document state.
   const stateBase64 = Buffer.from(Y.encodeStateAsUpdate(document)).toString(
     "base64",
   );
 
   const content = document.getText("monaco").toString();
 
-  // Persist the complete Yjs document state.
-  const { error: stateError } = await db.from("collaboration_documents").upsert(
-    {
-      file_id: fileId,
-      state_base64: stateBase64,
-      updated_at: new Date().toISOString(),
-    },
-    {
-      onConflict: "file_id",
-    },
-  );
+  // Insert a new collaboration document or update an existing one.
+  const { data: savedState, error: stateError } = await db
+    .from("collaboration_documents")
+    .upsert(
+      {
+        file_id: fileId,
+        state_base64: stateBase64,
+        updated_at: now,
+      },
+      {
+        onConflict: "file_id",
+      },
+    )
+    .select("file_id")
+    .maybeSingle();
 
   if (stateError) {
     throw new Error(
@@ -92,13 +134,17 @@ export const storeCollaborationDocument = async ({
     );
   }
 
-  // Keep the regular file record synchronized too.
+  if (!savedState) {
+    throw new Error("Collaboration document was not saved.");
+  }
+
+  // Synchronize the regular file record.
   const { error: fileError } = await db
     .from("project_files")
     .update({
       content,
       updated_by: userId,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     })
     .eq("id", fileId)
     .eq("project_id", projectId);
