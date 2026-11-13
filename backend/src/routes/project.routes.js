@@ -9,26 +9,6 @@ import {
   deleteProjectController,
 } from "../controllers/project.controller.js";
 
-import {
-  getTeamMembers,
-  updateMemberRole,
-  removeTeamMember,
-} from "../controllers/team.controller.js";
-
-import {
-  sendInvitation,
-  getPendingInvitations,
-  revokeInvitation,
-} from "../controllers/invitation.controller.js";
-
-import {
-  getFiles,
-  createFile,
-  getFile,
-  updateFile,
-  deleteFile,
-} from "../controllers/file.controller.js";
-
 const router = express.Router();
 
 // All project routes require authentication
@@ -48,45 +28,5 @@ router.put("/:projectId", updateProjectController);
 
 //delete a project
 router.delete("/:projectId", deleteProjectController);
-
-router.post("/:projectId/invitations", authenticateUser, sendInvitation);
-
-// Get pending project invitations
-router.get("/:projectId/invitations", authenticateUser, getPendingInvitations);
-
-// Revoke a pending project invitation
-router.delete(
-  "/:projectId/invitations/:invitationId",
-  authenticateUser,
-  revokeInvitation,
-);
-
-/**
- * team's apis
- */
-
-// Get team members of a project
-router.get("/:projectId/members", authenticateUser, getTeamMembers);
-
-// Update a project member's role
-router.patch(
-  "/:projectId/members/:memberId/role",
-  authenticateUser,
-  updateMemberRole,
-);
-
-// Remove a project member
-router.delete(
-  "/:projectId/members/:memberId",
-  authenticateUser,
-  removeTeamMember,
-);
-
-// Project file management
-router.get("/:projectId/files", authenticateUser, getFiles);
-router.post("/:projectId/files", authenticateUser, createFile);
-router.get("/:projectId/files/:fileId", authenticateUser, getFile);
-router.patch("/:projectId/files/:fileId", authenticateUser, updateFile);
-router.delete("/:projectId/files/:fileId", authenticateUser, deleteFile);
 
 export default router;

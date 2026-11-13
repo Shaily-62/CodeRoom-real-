@@ -1,4 +1,3 @@
-
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -10,6 +9,8 @@ import { supabase } from "./config/supabase.js";
 import authRoutes from "./routes/auth.routes.js";
 import projectRoutes from "./routes/project.routes.js";
 import invitationRoutes from "./routes/invitation.routes.js";
+import teamRoutes from "./routes/team.routes.js";
+import fileRoutes from "./routes/file.routes.js";
 
 const app = express();
 
@@ -21,7 +22,7 @@ app.use(
   cors({
     origin: "http://localhost:5173",
     credentials: true,
-  })
+  }),
 );
 
 // Parse incoming JSON requests
@@ -63,8 +64,12 @@ app.get("/api/health/supabase", async (req, res, next) => {
 
 //all apis
 app.use("/api/auth", authRoutes);
+
 app.use("/api/projects", projectRoutes);
-app.use("/api/invitations", invitationRoutes);
+app.use("/api/projects", fileRoutes);
+app.use("/api/projects", teamRoutes);
+
+app.use("/api", invitationRoutes);
 
 // Handle unknown routes
 app.use((req, res) => {
@@ -73,7 +78,6 @@ app.use((req, res) => {
     message: "API route not found",
   });
 });
-
 
 // Centralized error handler
 app.use((err, req, res, next) => {
